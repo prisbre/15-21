@@ -1,0 +1,311 @@
+bomb break point
+register state at break point
+
+0000000000400da0 <main>:
+0000000000400ee0 <phase_1>:
+rsi            0x603780	6305664
+rdi            0x603780	6305664
+
+0000000000401338 <strings_not_equal>:
+rsi            0x402400	4203520      mov $0x402400,%esi
+rdi            0x603780	6305664      (char) 输入的字符串
+
+0000000000401338 <strings_not_equal>:   返回bool  not equal > 1
+第一次调用40131b   返回rdi长度
+第二次                rsi
+000000000040131b <string_length>:       返回字符串长度
+
+000000000040143a <explode_bomb>:
+
+
+Defuse：
+在401352设断点，
+第二次调用<string_length>，检查rax的值为53，可知字符串长度为53
+用x/53c 0x402400 取出字符串：
+Border relations with Canada have never been better.
+
+----------------------------------------------------------
+
+0000000000400efc <phase_2>:
+
+Defuse：
+000000000040145c <read_six_numbers>:
+  401480:	be c3 25 40 00       	mov    $0x4025c3,%esi
+  查看字符串是%d %d %d %d %d %d，结合后续的库函数和动态链接知道这个是打印格式，需要输入6个字符。而
+  40145c:	48 83 ec 18          	sub    $0x18,%rsp
+  也说明了有六个4byte的数
+
+  回到phase_2中，结合反编译代码，看出是个循环，
+  初始值为1
+  400f0a:	83 3c 24 01          	cmpl   $0x1,(%rsp)
+  借助%rbx控制指针读取数据，%rbp用于判断终止
+  400f30:	48 8d 5c 24 04       	lea    0x4(%rsp),%rbx
+  400f35:	48 8d 6c 24 18       	lea    0x18(%rsp),%rbp
+
+  循环5次，算出一个等比数列 1 2 4 8 16 32
+
+  --------------------------------------------------------
+
+0000000000400f43 <phase_3>:
+400f75:	ff 24 c5 70 24 40 00 	jmpq   *0x402470(,%rax,8)  用数据测试  猜测是跳转表 2,5 400f83 1,8 400fb9
+
+(gdb) x/x 0x402470
+0x402470:	0x0000000000400f7c
+(gdb) x/x 0x402478
+0x402478:	0x0000000000400fb9
+(gdb) x/x 0x402480
+0x402480:	0x0000000000400f83
+(gdb) x/x 0x402488
+0x402488:	0x0000000000400f8a
+(gdb) x/x 0x402490
+0x402490:	0x0000000000400f91
+(gdb) x/x 0x402498
+0x402498:	0x0000000000400f98
+(gdb) x/x 0x402500
+0x402500:	0x6620657627756f79
+(gdb) x/x 0x4024a0
+0x4024a0:	0x0000000000400f9f
+(gdb) x/x 0x4024a8
+0x4024a8:	0x0000000000400fa6
+(gdb) x/x 0x4024b0
+
+0
+  400f7c:	b8 cf 00 00 00       	mov    $0xcf,%eax             207
+  400f81:	eb 3b                	jmp    400fbe <phase_3+0x7b>
+2
+  400f83:	b8 c3 02 00 00       	mov    $0x2c3,%eax            707
+  400f88:	eb 34                	jmp    400fbe <phase_3+0x7b>
+3
+  400f8a:	b8 00 01 00 00       	mov    $0x100,%eax            256
+  400f8f:	eb 2d                	jmp    400fbe <phase_3+0x7b>
+4
+  400f91:	b8 85 01 00 00       	mov    $0x185,%eax            389
+  400f96:	eb 26                	jmp    400fbe <phase_3+0x7b>
+5
+  400f98:	b8 ce 00 00 00       	mov    $0xce,%eax             206
+  400f9d:	eb 1f                	jmp    400fbe <phase_3+0x7b>
+6
+  400f9f:	b8 aa 02 00 00       	mov    $0x2aa,%eax            682
+  400fa4:	eb 18                	jmp    400fbe <phase_3+0x7b>
+7
+  400fa6:	b8 47 01 00 00       	mov    $0x147,%eax            327
+  400fab:	eb 11                	jmp    400fbe <phase_3+0x7b>
+  400fad:	e8 88 04 00 00       	callq  40143a <explode_bomb>
+  400fb2:	b8 00 00 00 00       	mov    $0x0,%eax
+  400fb7:	eb 05                	jmp    400fbe <phase_3+0x7b>
+1
+  400fb9:	b8 37 01 00 00       	mov    $0x137,%eax            311
+
+  400fbe:	3b 44 24 0c          	cmp    0xc(%rsp),%eax        *****
+
+--------------------------------------------------------
+
+000000000040100c <phase_4>:
+由反编译代码看出第一个数小于14，第二个为0。函数调用返回0，能成功告破
+  40102e:	83 7c 24 08 0e       	cmpl   $0xe,0x8(%rsp)             < 14
+  40104d:	85 c0                	test   %eax,%eax              == 0 not boom
+  401051:	83 7c 24 0c 00       	cmpl   $0x0,0xc(%rsp)          == 0
+
+x %rsp+8, y 0, z 14
+func4 (x, y, z) {
+    t = z - y;
+    t = t + t >> 31;
+    t = t >> 1;
+    if (x > 1) {
+        z = t + 1;
+        re = func4(x, y ,z);
+        re = re * 2;
+    } else {
+        re = 0;     // x < t
+        if (x = t) {
+            y = t + 1;
+            re = func4(x, y, z);
+            re = re * 2 + 1;
+        }
+    }
+    return re;
+}
+
+写成函数在ide上用0-14跑了下，都能得到0 。。。。
+动手算了几个数，迭代的过程极其繁琐
+x < 7, 不用迭代就得0；
+不知道这个函数是干什么的，总之告破了
+
+-------------------------------------------------
+
+0000000000401062 <phase_5>:
+  401096:	83 e2 0f             	and    $0xf,%edx
+屏蔽其他位，取出edx的低4位，即0-F。之前卡在这是误认为取全一个byte
+  401099:	0f b6 92 b0 24 40 00 	movzbl 0x4024b0(%rdx),%edx
+x/16s 0x4024b0得到
+0x4024b0 <array.3449>:
+maduiersnfotvbylSo you think you can stop the bomb with ctrl-c, do you?
+f   l   y   e   r   s
+9   15  14  5   6   7
+9   f   e   5   6   7
+I   O   N   E   F   G   若+0x40 (64) 查ascii
+Y   _   ^   U   V   W   若+0x50 (70) 查ascii
+
+  4010b3:	be 5e 24 40 00       	mov    $0x40245e,%esi
+x/s 0x40245e得到查出是flyers
+
+通过ascii码的低4位加上偏移量0x4024b0，得到<array.3449>对应的字母，然后拼出真正的字符串
+理论上只要是ASCII码低4位就够了，但有些码是键盘打不出来的，方便起见还是要选择0x20-0x7f范围的码
+
+------------------------------------------------------
+
+00000000004010f4 <phase_6>:
+
+  4010f4:	41 56                	push   %r14
+  4010f6:	41 55                	push   %r13
+  4010f8:	41 54                	push   %r12
+  4010fa:	55                   	push   %rbp
+  4010fb:	53                   	push   %rbx
+  4010fc:	48 83 ec 50          	sub    $0x50,%rsp            rsp - 80
+  401100:	49 89 e5             	mov    %rsp,%r13               r13 = rsp
+  401103:	48 89 e6             	mov    %rsp,%rsi               rsi = rsp
+  401106:	e8 51 03 00 00       	callq  40145c <read_six_numbers>
+  40110b:	49 89 e6             	mov    %rsp,%r14               r14 = rsp
+  40110e:	41 bc 00 00 00 00    	mov    $0x0,%r12d              r12 = 0
+L3
+  401114:	4c 89 ed             	mov    %r13,%rbp               rbp = r13
+  401117:	41 8b 45 00          	mov    0x0(%r13),%eax          rax = (r13+0)
+  40111b:	83 e8 01             	sub    $0x1,%eax               rax = rax - 1
+  40111e:	83 f8 05             	cmp    $0x5,%eax               if rax <= 5notboom     6个数均小于等于5
+  401121:	76 05                	jbe    401128 <phase_6+0x34>
+  401123:	e8 12 03 00 00       	callq  40143a <explode_bomb>
+  401128:	41 83 c4 01          	add    $0x1,%r12d              r12 = r12 + 1
+  40112c:	41 83 fc 06          	cmp    $0x6,%r12d            if r12 == 6 goto L1
+  401130:	74 21                	je     401153 <phase_6+0x5f>
+  401132:	44 89 e3             	mov    %r12d,%ebx              rbx = r12
+L2
+  401135:	48 63 c3             	movslq %ebx,%rax               rax = rbx
+  401138:	8b 04 84             	mov    (%rsp,%rax,4),%eax      rax = (rsp+4rax)
+  40113b:	39 45 00             	cmp    %eax,0x0(%rbp)   if rax != (rbp+0)notboom     后与前比
+  40113e:	75 05                	jne    401145 <phase_6+0x51>
+  401140:	e8 f5 02 00 00       	callq  40143a <explode_bomb>
+  401145:	83 c3 01             	add    $0x1,%ebx               rbx = rbx + 1
+  401148:	83 fb 05             	cmp    $0x5,%ebx            if rbx <= 5  goto L2
+  40114b:	7e e8                	jle    401135 <phase_6+0x41>
+  40114d:	49 83 c5 04          	add    $0x4,%r13               r13 = r13 + 4
+  401151:	eb c1                	jmp    401114 <phase_6+0x20>   goto L3             L3-L1 循环去重
+L1                                                                            ---------------------------
+  401153:	48 8d 74 24 18       	lea    0x18(%rsp),%rsi         rsi = rsp + 24
+  401158:	4c 89 f0             	mov    %r14,%rax               rax = rsp
+  40115b:	b9 07 00 00 00       	mov    $0x7,%ecx               rcx = 7
+L4
+  401160:	89 ca                	mov    %ecx,%edx               rdx = rcx             赋7
+  401162:	2b 10                	sub    (%rax),%edx             rdx = rdx - (rax)
+  401164:	89 10                	mov    %edx,(%rax)             (rax) = rdx
+  401166:	48 83 c0 04          	add    $0x4,%rax               rax = rax + 4         7减各个数
+  40116a:	48 39 f0             	cmp    %rsi,%rax    if rax != rsi(s-end) goto L4
+  40116d:	75 f1                	jne    401160 <phase_6+0x6c>                         L1-L7
+  40116f:	be 00 00 00 00       	mov    $0x0,%esi               rsi = 0
+  401174:	eb 21                	jmp    401197 <phase_6+0xa3>   goto L5
+L7                                                                            ---------------------------
+  401176:	48 8b 52 08          	mov    0x8(%rdx),%rdx          rdx = (rdx+8)
+  40117a:	83 c0 01             	add    $0x1,%eax               rax = rax + 1
+  40117d:	39 c8                	cmp    %ecx,%eax           if rax != rcx goto L7
+  40117f:	75 f5                	jne    401176 <phase_6+0x82>
+  401181:	eb 05                	jmp    401188 <phase_6+0x94>   goto L8
+L6
+  401183:	ba d0 32 60 00       	mov    $0x6032d0,%edx          rdx = 0x6032d0 **     链表  <=1 default
+L8
+  401188:	48 89 54 74 20       	mov    %rdx,0x20(%rsp,%rsi,2) (rsp+2rsi+32)= rdx
+  40118d:	48 83 c6 04          	add    $0x4,%rsi              rsi = rsi + 4
+  401191:	48 83 fe 18          	cmp    $0x18,%rsi           if rsi = 24 goto L9
+  401195:	74 14                	je     4011ab <phase_6+0xb7>
+L5
+  401197:	8b 0c 34             	mov    (%rsp,%rsi,1),%ecx      rcx = (rsp+rsi)
+  40119a:	83 f9 01             	cmp    $0x1,%ecx             if rcx <= 1 goto L6
+  40119d:	7e e4                	jle    401183 <phase_6+0x8f>
+  40119f:	b8 01 00 00 00       	mov    $0x1,%eax               rax = 1
+  4011a4:	ba d0 32 60 00       	mov    $0x6032d0,%edx          rdx = 0x6032d0 **      node
+  4011a9:	eb cb                	jmp    401176 <phase_6+0x82>   goto L7                L7-L9
+L9                                                                            ---------------------------
+  4011ab:	48 8b 5c 24 20       	mov    0x20(%rsp),%rbx         rbx = (rsp+32)
+  4011b0:	48 8d 44 24 28       	lea    0x28(%rsp),%rax         rax = rsp + 40
+  4011b5:	48 8d 74 24 50       	lea    0x50(%rsp),%rsi         rsi = rsp + 80
+  4011ba:	48 89 d9             	mov    %rbx,%rcx               rcx = (rsp+32)
+L11
+  4011bd:	48 8b 10             	mov    (%rax),%rdx             rdx = (rax)        修改nodei+8处地址构成首尾相接的单链表
+  4011c0:	48 89 51 08          	mov    %rdx,0x8(%rcx)          (rcx+8) = rdx
+  4011c4:	48 83 c0 08          	add    $0x8,%rax               rax = rax + 8
+  4011c8:	48 39 f0             	cmp    %rsi,%rax           if rax = rsi goto L10
+  4011cb:	74 05                	je     4011d2 <phase_6+0xde>
+  4011cd:	48 89 d1             	mov    %rdx,%rcx               rcx = rdx
+  4011d0:	eb eb                	jmp    4011bd <phase_6+0xc9>   goto L11
+L10                                                                            ---------------------------
+  4011d2:	48 c7 42 08 00 00 00 	movq   $0x0,0x8(%rdx)          (rdx+8) = 0
+  4011d9:	00
+  4011da:	bd 05 00 00 00       	mov    $0x5,%ebp               rbp = 5
+L12
+  4011df:	48 8b 43 08          	mov    0x8(%rbx),%rax          rax = (rbx+8)
+  4011e3:	8b 00                	mov    (%rax),%eax             rax = (rax)
+  4011e5:	39 03                	cmp    %eax,(%rbx)     if (rbx) >= rax notboom       递减排序
+
+  4011e7:	7d 05                	jge    4011ee <phase_6+0xfa>
+  4011e9:	e8 4c 02 00 00       	callq  40143a <explode_bomb>
+  4011ee:	48 8b 5b 08          	mov    0x8(%rbx),%rbx          rbx = (rbx+8)
+  4011f2:	83 ed 01             	sub    $0x1,%ebp               rbp = rbp - 1
+  4011f5:	75 e8                	jne    4011df <phase_6+0xeb>  if rbp != 1 goto L12
+  4011f7:	48 83 c4 50          	add    $0x50,%rsp                          ---------------------------
+  4011fb:	5b                   	pop    %rbx
+  4011fc:	5d                   	pop    %rbp
+  4011fd:	41 5c                	pop    %r12
+  4011ff:	41 5d                	pop    %r13
+  401201:	41 5e                	pop    %r14
+  401203:	c3                   	retq
+
+4011d2处设断点，修改以完成，可见
+(gdb) x/24g 0x6032d0
+0x6032d0 <node1>:	0x000000010000014c	0x00000000006032e0   322
+0x6032e0 <node2>:	0x00000002000000a8	0x00000000006032f0   168
+0x6032f0 <node3>:	0x000000030000039c	0x0000000000603300   924
+0x603300 <node4>:	0x00000004000002b3	0x0000000000603310   691
+0x603310 <node5>:	0x00000005000001dd	0x0000000000603320   477
+0x603320 <node6>:	0x00000006000001bb	0x00000000006032d0   443
+
+链表数据结构，链表的节点由3部分组成：value 1、value 2和一个地址值(next域，指向下一个节点)。
+
+Section 4根据Section 3构建的地址数组，修改结构体数组的next域的值，实现单链表的排序操作。Section 5进行验证，要求单链表递减排序，若满足要求，那么拆弹成功。
+
+最终得到序列：3 4 5 6 1 2，反求7的补码，所以phase_6的输入序列应该为4 3 2 1 6 5
+
+---------------------------------------------------------------------------------
+
+Border relations with Canada have never been better.
+1 2 4 8 16 32
+1 311
+1 0
+Y_^UVW
+4 3 2 1 6 5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
